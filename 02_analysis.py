@@ -44,7 +44,7 @@ df['OBP_approx'] = (df['H'] + (df['PA'] - df['AB'])) / df['PA']
 df['SLG'] = df['TB'] / df['AB']
 df['OPS'] = df['OBP_approx'] + df['SLG']
 
-# --- wOBA (가중 출루율, KBO 2024 근사 가중치) ---
+# --- wOBA (가중 출루율, KBO 2025 근사 가중치) ---
 # wOBA = (0.69×BB + 0.72×HBP + 0.89×1B + 1.27×2B + 1.62×3B + 2.10×HR) / PA
 # BB, HBP 없이 근사: 단타 = H - 2B - 3B - HR
 df['1B'] = df['H'] - df['2B'] - df['3B'] - df['HR']
@@ -69,7 +69,7 @@ print(df[['선수명', 'AVG', 'OBP_approx', 'SLG', 'OPS', 'wOBA_approx', 'ISO']]
 # 3. 시각화 1: 타율 vs OPS 비교 (타율의 한계)
 # ════════════════════════════════════════════════
 fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-fig.suptitle('2024 SSG 랜더스 — 타율 vs OPS 비교\n(단순 타율이 놓치는 것들)', 
+fig.suptitle('2025 SSG 랜더스 — 타율 vs OPS 비교\n(단순 타율이 놓치는 것들)', 
              fontsize=14, fontweight='bold', y=1.02)
 
 df_sorted_avg = df.sort_values('AVG', ascending=True)
@@ -114,7 +114,7 @@ bars = ax.barh(df_sorted_woba['선수명'], df_sorted_woba['wOBA_approx'], color
 
 ax.axvline(x=df['wOBA_approx'].mean(), color='navy', linestyle='--', linewidth=1.5,
            label=f'팀 평균 wOBA: {df["wOBA_approx"].mean():.3f}')
-ax.set_title('2024 SSG 랜더스 타자별 wOBA (가중 출루율)\n— 높을수록 득점 기여도 높음 —', 
+ax.set_title('2025 SSG 랜더스 타자별 wOBA (가중 출루율)\n— 높을수록 득점 기여도 높음 —', 
              fontsize=13, fontweight='bold')
 ax.set_xlabel('wOBA (Weighted On-Base Average)', fontsize=11)
 ax.legend(fontsize=10)
@@ -164,7 +164,7 @@ ax.text(df['OBP_approx'].max() - 0.03, df['SLG'].min() + 0.01,
 plt.colorbar(scatter, label='OPS')
 ax.set_xlabel('출루율 (OBP)', fontsize=11)
 ax.set_ylabel('장타율 (SLG)', fontsize=11)
-ax.set_title('2024 SSG 랜더스 타자 유형 분류\n출루율 vs 장타율 (원 크기 = 타석수)', 
+ax.set_title('2025 SSG 랜더스 타자 유형 분류\n출루율 vs 장타율 (원 크기 = 타석수)', 
              fontsize=13, fontweight='bold')
 
 plt.tight_layout()
@@ -177,7 +177,7 @@ print("✅ output/03_obp_vs_slg_scatter.png 저장 완료")
 # 6. 인사이트 요약 출력
 # ════════════════════════════════════════════════
 print("\n" + "="*50)
-print("📊 분석 요약: 2024 SSG 랜더스 타선")
+print("📊 분석 요약: 2025 SSG 랜더스 타선")
 print("="*50)
 
 top_avg = df.sort_values('AVG', ascending=False).iloc[0]
