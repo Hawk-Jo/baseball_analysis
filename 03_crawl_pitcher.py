@@ -18,14 +18,19 @@ TEAM     = "SSG"
 
 
 def parse_ip(ip_str: str) -> float:
-    """'180 2/3' → 180.67 형식으로 변환"""
+    """'180 2/3' → 180.67, '2/3' → 0.67 형식으로 변환"""
     ip_str = str(ip_str).strip()
+    frac_map = {'1/3': 0.33, '2/3': 0.67}
+    
     if ' ' in ip_str:
+        # '180 2/3' 형태
         parts = ip_str.split()
-        whole = float(parts[0])
-        frac_map = {'1/3': 0.33, '2/3': 0.67}
-        return whole + frac_map.get(parts[1], 0)
-    return float(ip_str) if ip_str else 0.0
+        return float(parts[0]) + frac_map.get(parts[1], 0)
+    elif ip_str in frac_map:
+        # '2/3' 형태 (0이닝 2/3)
+        return frac_map[ip_str]
+    else:
+        return float(ip_str) if ip_str else 0.0
 
 
 async def select_filters(page, year: str):
