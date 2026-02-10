@@ -1,202 +1,168 @@
 """
-2025 시즌 SSG 랜더스 타자 세이버메트릭스 분석
-- OPS, wOBA 계산
-- 타율 vs OPS 비교
-- 선수별 득점 기여도 시각화
-
-실행 순서: 01_crawl_kbo.py 실행 후 이 파일 실행
+2024 vs 2025 SSG 랜더스 타선 비교 분석
+- OPS, wOBA, ISO 계산
+- 시즌별 팀 타선 전체 비교
+- 두 시즌 모두 출전한 선수 개인 성장/하락 추적
 """
 
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
+import matplotlib.patches as mpatches
 import numpy as np
 import os
 
-# ── 한글 폰트 설정 ─────────────────────────────────────────────
-# macOS: 'AppleGothic' / Windows: 'Malgun Gothic' / Linux: 'NanumGothic'
-plt.rcParams['font.family'] = 'Malgun Gothic'
+plt.rcParams['font.family'] = 'Malgun Gothic'  # macOS: 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
 
 os.makedirs("output", exist_ok=True)
 
 
 # ════════════════════════════════════════════════
-# 1. 데이터 로드
-# ════════════════════════════════════════════════
-df = pd.read_csv("data/ssg_hitters_qualified.csv")
-print(f"분석 대상: {len(df)}명\n")
-
-
-# ════════════════════════════════════════════════
-# 2. 세이버메트릭스 지표 계산
+# 1. 데이터 로드 및 지표 계산
 # ════════════════════════════════════════════════
 
-# --- OPS (출루율 + 장타율) ---
-# OBP = (H + BB + HBP) / (AB + BB + HBP + SF)
-# SLG = TB / AB
-# 주의: KBO 기본기록에는 BB(볼넷), HBP(사구)가 별도 수집 필요
-# → 여기서는 PA, AB, H, TB를 이용한 근사치 사용
-#   BB ≈ PA - AB - SAC - SF  (희생타/희생플라이는 세부기록에서 가져와야 함)
-#   단순화: OBP = (H + (PA - AB)) / PA  (볼넷+사구+희생 포함 근사)
+def calc_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """OPS, wOBA, ISO 계산"""
+    df = df.copy()
+    df['OBP']  = (df['H'] + (df['PA'] - df['AB'])) / df['PA']
+    df['SLG']  = df['TB'] / df['AB']
+    df['OPS']  = df['OBP'] + df['SLG']
+    df['1B']   = df['H'] - df['2B'] - df['3B'] - df['HR']
+    df['wOBA'] = (0.89*df['1B'] + 1.27*df['2B'] + 1.62*df['3B'] + 2.10*df['HR']) / df['PA']
+    df['ISO']  = df['SLG'] - df['AVG']
+    return df
 
-df['OBP_approx'] = (df['H'] + (df['PA'] - df['AB'])) / df['PA']
-df['SLG'] = df['TB'] / df['AB']
-df['OPS'] = df['OBP_approx'] + df['SLG']
 
-# --- wOBA (가중 출루율, KBO 2025 근사 가중치) ---
-# wOBA = (0.69×BB + 0.72×HBP + 0.89×1B + 1.27×2B + 1.62×3B + 2.10×HR) / PA
-# BB, HBP 없이 근사: 단타 = H - 2B - 3B - HR
-df['1B'] = df['H'] - df['2B'] - df['3B'] - df['HR']
-df['wOBA_approx'] = (
-    0.89 * df['1B'] +
-    1.27 * df['2B'] +
-    1.62 * df['3B'] +
-    2.10 * df['HR']
-) / df['PA']
+df_all  = pd.read_csv("data/ssg_hitters_qualified.csv")
+df_all  = calc_metrics(df_all)
 
-# --- 파워-스피드 대리 지표: ISO (순수 장타력) ---
-# ISO = SLG - AVG
-df['ISO'] = df['SLG'] - df['AVG']
+df_2024 = df_all[df_all['season'] == 2024].copy()
+df_2025 = df_all[df_all['season'] == 2025].copy()
 
-print("── 계산된 지표 ──")
-print(df[['선수명', 'AVG', 'OBP_approx', 'SLG', 'OPS', 'wOBA_approx', 'ISO']]
-      .sort_values('OPS', ascending=False)
-      .to_string(index=False))
+print(f"2024 시즌: {len(df_2024)}명 / 2025 시즌: {len(df_2025)}명\n")
 
 
 # ════════════════════════════════════════════════
-# 3. 시각화 1: 타율 vs OPS 비교 (타율의 한계)
+# 2. 시각화 1: 시즌별 팀 평균 지표 비교
 # ════════════════════════════════════════════════
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-fig.suptitle('2025 SSG 랜더스 — 타율 vs OPS 비교\n(단순 타율이 놓치는 것들)', 
-             fontsize=14, fontweight='bold', y=1.02)
 
-df_sorted_avg = df.sort_values('AVG', ascending=True)
-df_sorted_ops = df.sort_values('OPS', ascending=True)
+metrics = ['AVG', 'OBP', 'SLG', 'OPS', 'wOBA']
+labels  = ['타율', '출루율', '장타율', 'OPS', 'wOBA']
 
-# 타율 순위
-axes[0].barh(df_sorted_avg['선수명'], df_sorted_avg['AVG'], 
-             color='steelblue', alpha=0.8)
-axes[0].set_title('타율 순위', fontsize=12)
-axes[0].set_xlabel('타율 (AVG)')
-axes[0].axvline(x=df['AVG'].mean(), color='red', linestyle='--', alpha=0.7, label=f'평균: {df["AVG"].mean():.3f}')
-axes[0].legend()
-for i, (val, name) in enumerate(zip(df_sorted_avg['AVG'], df_sorted_avg['선수명'])):
-    axes[0].text(val + 0.001, i, f'{val:.3f}', va='center', fontsize=9)
+avg_2024 = [df_2024[m].mean() for m in metrics]
+avg_2025 = [df_2025[m].mean() for m in metrics]
 
-# OPS 순위
-axes[1].barh(df_sorted_ops['선수명'], df_sorted_ops['OPS'], 
-             color='darkorange', alpha=0.8)
-axes[1].set_title('OPS 순위', fontsize=12)
-axes[1].set_xlabel('OPS (출루율 + 장타율)')
-axes[1].axvline(x=df['OPS'].mean(), color='red', linestyle='--', alpha=0.7, label=f'평균: {df["OPS"].mean():.3f}')
-axes[1].legend()
-for i, (val, name) in enumerate(zip(df_sorted_ops['OPS'], df_sorted_ops['선수명'])):
-    axes[1].text(val + 0.003, i, f'{val:.3f}', va='center', fontsize=9)
+x     = np.arange(len(metrics))
+width = 0.35
 
-plt.tight_layout()
-plt.savefig('output/01_avg_vs_ops.png', dpi=150, bbox_inches='tight')
-plt.close()
-print("\n✅ output/01_avg_vs_ops.png 저장 완료")
+fig, ax = plt.subplots(figsize=(11, 6))
+bars1 = ax.bar(x - width/2, avg_2024, width, label='2024', color='#C8102E', alpha=0.85)
+bars2 = ax.bar(x + width/2, avg_2025, width, label='2025', color='#003087', alpha=0.85)
 
-
-# ════════════════════════════════════════════════
-# 4. 시각화 2: wOBA 기반 득점 기여도
-# ════════════════════════════════════════════════
-fig, ax = plt.subplots(figsize=(10, 7))
-
-colors = ['#C8102E' if v >= df['wOBA_approx'].mean() else '#A9A9A9' 
-          for v in df.sort_values('wOBA_approx', ascending=True)['wOBA_approx']]
-
-df_sorted_woba = df.sort_values('wOBA_approx', ascending=True)
-bars = ax.barh(df_sorted_woba['선수명'], df_sorted_woba['wOBA_approx'], color=colors, alpha=0.9)
-
-ax.axvline(x=df['wOBA_approx'].mean(), color='navy', linestyle='--', linewidth=1.5,
-           label=f'팀 평균 wOBA: {df["wOBA_approx"].mean():.3f}')
-ax.set_title('2025 SSG 랜더스 타자별 wOBA (가중 출루율)\n— 높을수록 득점 기여도 높음 —', 
+ax.set_title('SSG 랜더스 팀 타선 지표 비교: 2024 vs 2025\n(200타석 이상 선수 평균)',
              fontsize=13, fontweight='bold')
-ax.set_xlabel('wOBA (Weighted On-Base Average)', fontsize=11)
-ax.legend(fontsize=10)
+ax.set_xticks(x)
+ax.set_xticklabels(labels, fontsize=11)
+ax.legend(fontsize=11)
 
-for i, (val, name) in enumerate(zip(df_sorted_woba['wOBA_approx'], df_sorted_woba['선수명'])):
-    ax.text(val + 0.002, i, f'{val:.3f}', va='center', fontsize=9)
-
-from matplotlib.patches import Patch
-legend_elements = [Patch(facecolor='#C8102E', alpha=0.9, label='팀 평균 이상'),
-                   Patch(facecolor='#A9A9A9', alpha=0.9, label='팀 평균 미만')]
-ax.legend(handles=legend_elements + [plt.Line2D([0], [0], color='navy', linestyle='--', label=f'팀 평균: {df["wOBA_approx"].mean():.3f}')],
-          fontsize=10)
+for bar in bars1:
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.003,
+            f'{bar.get_height():.3f}', ha='center', va='bottom', fontsize=9)
+for bar in bars2:
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.003,
+            f'{bar.get_height():.3f}', ha='center', va='bottom', fontsize=9)
 
 plt.tight_layout()
-plt.savefig('output/02_woba_contribution.png', dpi=150, bbox_inches='tight')
+plt.savefig('output/01_team_comparison.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("✅ output/02_woba_contribution.png 저장 완료")
+print("✅ output/01_team_comparison.png 저장 완료")
 
 
 # ════════════════════════════════════════════════
-# 5. 시각화 3: OBP vs SLG 산점도 (타자 유형 분류)
+# 3. 시각화 2: 공통 선수 OPS 변화량
 # ════════════════════════════════════════════════
-fig, ax = plt.subplots(figsize=(10, 8))
 
-scatter = ax.scatter(df['OBP_approx'], df['SLG'], 
-                     s=df['PA'] / 3,  # 타석 수에 비례한 크기
-                     c=df['OPS'], cmap='RdYlGn', alpha=0.8, edgecolors='gray', linewidth=0.5)
+common_players  = set(df_2024['선수명']) & set(df_2025['선수명'])
+df_2024_common  = df_2024[df_2024['선수명'].isin(common_players)].set_index('선수명')
+df_2025_common  = df_2025[df_2025['선수명'].isin(common_players)].set_index('선수명')
 
-for _, row in df.iterrows():
-    ax.annotate(row['선수명'], (row['OBP_approx'], row['SLG']),
-                textcoords="offset points", xytext=(6, 4), fontsize=9)
+ops_change = (df_2025_common['OPS'] - df_2024_common['OPS']).sort_values()
+colors     = ['#C8102E' if v >= 0 else '#A9A9A9' for v in ops_change]
 
-# 평균선 추가
-ax.axvline(x=df['OBP_approx'].mean(), color='gray', linestyle=':', alpha=0.6)
-ax.axhline(y=df['SLG'].mean(), color='gray', linestyle=':', alpha=0.6)
+fig, ax = plt.subplots(figsize=(10, max(5, len(ops_change) * 0.5 + 1)))
+bars    = ax.barh(ops_change.index, ops_change.values, color=colors, alpha=0.85)
+ax.axvline(x=0, color='black', linewidth=1)
 
-# 사분면 레이블
-ax.text(df['OBP_approx'].min() + 0.005, df['SLG'].max() - 0.02, 
-        '장타형', fontsize=9, color='gray', alpha=0.7)
-ax.text(df['OBP_approx'].max() - 0.03, df['SLG'].max() - 0.02, 
-        '완성형', fontsize=9, color='green', fontweight='bold', alpha=0.8)
-ax.text(df['OBP_approx'].min() + 0.005, df['SLG'].min() + 0.01, 
-        '하위', fontsize=9, color='gray', alpha=0.7)
-ax.text(df['OBP_approx'].max() - 0.03, df['SLG'].min() + 0.01, 
-        '출루형', fontsize=9, color='steelblue', alpha=0.7)
-
-plt.colorbar(scatter, label='OPS')
-ax.set_xlabel('출루율 (OBP)', fontsize=11)
-ax.set_ylabel('장타율 (SLG)', fontsize=11)
-ax.set_title('2025 SSG 랜더스 타자 유형 분류\n출루율 vs 장타율 (원 크기 = 타석수)', 
+ax.set_title('SSG 랜더스 선수별 OPS 변화\n(2024 → 2025, 두 시즌 모두 200타석 이상)',
              fontsize=13, fontweight='bold')
+ax.set_xlabel('OPS 변화량 (양수: 향상 / 음수: 하락)', fontsize=11)
+
+for bar, val in zip(bars, ops_change.values):
+    offset = 0.003 if val >= 0 else -0.003
+    ha     = 'left' if val >= 0 else 'right'
+    ax.text(val + offset, bar.get_y() + bar.get_height()/2,
+            f'{val:+.3f}', va='center', ha=ha, fontsize=9)
+
+legend_elements = [mpatches.Patch(color='#C8102E', alpha=0.85, label='향상'),
+                   mpatches.Patch(color='#A9A9A9', alpha=0.85, label='하락')]
+ax.legend(handles=legend_elements, fontsize=10)
 
 plt.tight_layout()
-plt.savefig('output/03_obp_vs_slg_scatter.png', dpi=150, bbox_inches='tight')
+plt.savefig('output/02_ops_change.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("✅ output/03_obp_vs_slg_scatter.png 저장 완료")
+print("✅ output/02_ops_change.png 저장 완료")
 
 
 # ════════════════════════════════════════════════
-# 6. 인사이트 요약 출력
+# 4. 시각화 3: wOBA 나란히 비교
 # ════════════════════════════════════════════════
-print("\n" + "="*50)
-print("📊 분석 요약: 2025 SSG 랜더스 타선")
-print("="*50)
 
-top_avg = df.sort_values('AVG', ascending=False).iloc[0]
-top_ops = df.sort_values('OPS', ascending=False).iloc[0]
-top_woba = df.sort_values('wOBA_approx', ascending=False).iloc[0]
+fig, axes = plt.subplots(1, 2, figsize=(14, max(5, len(common_players) * 0.45 + 1)))
 
-print(f"\n▶ 타율 1위:  {top_avg['선수명']} ({top_avg['AVG']:.3f})")
-print(f"▶ OPS 1위:   {top_ops['선수명']} ({top_ops['OPS']:.3f})")
-print(f"▶ wOBA 1위:  {top_woba['선수명']} ({top_woba['wOBA_approx']:.3f})")
+for ax, df_sub, year, color in zip(
+    axes,
+    [df_2024_common.loc[sorted(common_players)],
+     df_2025_common.loc[sorted(common_players)]],
+    ['2024', '2025'],
+    ['#C8102E', '#003087']
+):
+    df_plot    = df_sub['wOBA'].sort_values()
+    bar_colors = [color if v >= df_sub['wOBA'].mean() else '#D3D3D3' for v in df_plot]
+    ax.barh(df_plot.index, df_plot.values, color=bar_colors, alpha=0.85)
+    ax.axvline(x=df_sub['wOBA'].mean(), color='black', linestyle='--', linewidth=1.2,
+               label=f'평균: {df_sub["wOBA"].mean():.3f}')
+    ax.set_title(f'{year} 시즌 wOBA', fontsize=12, fontweight='bold')
+    ax.set_xlabel('wOBA')
+    ax.legend(fontsize=9)
+    for i, val in enumerate(df_plot.values):
+        ax.text(val + 0.002, i, f'{val:.3f}', va='center', fontsize=8)
 
-# 타율 순위 ≠ OPS 순위인 선수 (지표 차이가 큰 선수)
-df['avg_rank'] = df['AVG'].rank(ascending=False)
-df['ops_rank'] = df['OPS'].rank(ascending=False)
-df['rank_diff'] = (df['avg_rank'] - df['ops_rank']).abs()
+fig.suptitle('SSG 랜더스 선수별 wOBA 비교 (공통 선수)', fontsize=13, fontweight='bold')
+plt.tight_layout()
+plt.savefig('output/03_woba_comparison.png', dpi=150, bbox_inches='tight')
+plt.close()
+print("✅ output/03_woba_comparison.png 저장 완료")
 
-notable = df.sort_values('rank_diff', ascending=False).head(3)
-print(f"\n▶ 타율 순위와 OPS 순위 차이가 큰 선수 (분석 포인트):")
-for _, row in notable.iterrows():
-    direction = "과소평가" if row['ops_rank'] < row['avg_rank'] else "과대평가"
-    print(f"   {row['선수명']}: 타율 {int(row['avg_rank'])}위 → OPS {int(row['ops_rank'])}위 ({direction})")
+
+# ════════════════════════════════════════════════
+# 5. 인사이트 요약
+# ════════════════════════════════════════════════
+
+print("\n" + "="*55)
+print("📊 분석 요약: 2024 vs 2025 SSG 랜더스 타선")
+print("="*55)
+
+for metric, label in zip(['AVG', 'OPS', 'wOBA'], ['타율', 'OPS', 'wOBA']):
+    v24       = df_2024[metric].mean()
+    v25       = df_2025[metric].mean()
+    diff      = v25 - v24
+    direction = "▲ 향상" if diff > 0 else "▼ 하락"
+    print(f"{label:>5}: {v24:.3f} → {v25:.3f}  ({direction} {abs(diff):.3f})")
+
+if len(ops_change) > 0:
+    top_improve = ops_change.idxmax()
+    top_decline = ops_change.idxmin()
+    print(f"\n▶ OPS 가장 많이 향상: {top_improve} ({ops_change[top_improve]:+.3f})")
+    print(f"▶ OPS 가장 많이 하락: {top_decline} ({ops_change[top_decline]:+.3f})")
 
 print("\n✅ 모든 시각화 output/ 폴더에 저장 완료")
