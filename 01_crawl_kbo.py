@@ -1,5 +1,5 @@
 """
-KBO 공식 사이트에서 2024 시즌 SSG 랜더스 타자 기록 수집
+KBO 공식 사이트에서 2025 시즌 SSG 랜더스 타자 기록 수집
 playwright를 이용한 크롤링 코드
 
 실행 방법:
@@ -14,7 +14,7 @@ from playwright.async_api import async_playwright
 
 
 BASE_URL = "https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx"
-YEAR = "2024"
+YEAR = "2025"
 TEAM = "SSG"
 
 
